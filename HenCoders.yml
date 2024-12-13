@@ -1,0 +1,117 @@
+name: HenWindows 2022
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 9999
+
+    steps:
+    - name: Download start.bat
+      run: |
+        echo "Downloading start.bat..."
+        Invoke-WebRequest -Uri https://raw.githubusercontent.com/HenDeveloper/HenRdp2/refs/heads/main/start.bat -OutFile start.bat
+        echo "start.bat downloaded successfully."
+
+    - name: Download loop.bat
+      run: |
+        echo "Downloading loop.bat..."
+        Invoke-WebRequest -Uri https://raw.githubusercontent.com/HenDeveloper/HenRdp2/refs/heads/main/loop.bat -OutFile loop.bat
+        echo "loop.bat downloaded successfully."
+
+    - name: Hide UnityHub and R 4.4.2 Icons
+      run: |
+        echo "Hiding UnityHub and R 4.4.2 icons..."
+        $desktopPath = [Environment]::GetFolderPath("Desktop")
+        Remove-Item "$desktopPath\UnityHub.lnk" -ErrorAction SilentlyContinue
+        Remove-Item "$desktopPath\R 4.4.2.lnk" -ErrorAction SilentlyContinue
+        echo "Icons hidden successfully."
+
+    - name: Uninstall Microsoft Edge and Firefox
+      run: |
+        echo "Uninstalling Microsoft Edge..."
+        Get-AppxPackage *MicrosoftEdge* | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+        echo "Microsoft Edge uninstalled."
+        echo "Uninstalling Firefox..."
+        $firefoxPath = "C:\Program Files\Mozilla Firefox"
+        if (Test-Path $firefoxPath) {
+          Start-Process -FilePath "$firefoxPath\uninstall\helper.exe" -ArgumentList "/S" -Wait
+          Remove-Item -Recurse -Force $firefoxPath -ErrorAction SilentlyContinue
+        }
+        echo "Firefox uninstalled successfully."
+
+    - name: Set Chrome as Default Browser
+      run: |
+        echo "Setting Google Chrome as the default browser..."
+        $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+        if (Test-Path $chromePath) {
+          Start-Process -FilePath $chromePath -ArgumentList "--make-default-browser" -Wait
+          echo "Google Chrome set as the default browser."
+        } else {
+          echo "Google Chrome not installed. Skipping default browser setup."
+        }
+
+    - name: Install Steam
+      run: |
+        echo "Downloading Steam installer..."
+        Invoke-WebRequest -Uri https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe -OutFile SteamSetup.exe
+        echo "Installing Steam..."
+        Start-Process -FilePath SteamSetup.exe -ArgumentList "/S" -Wait
+        echo "Steam installed successfully."
+
+    - name: Install Tailscale
+      run: |
+        echo "Downloading Tailscale installer..."
+        Invoke-WebRequest -Uri https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe -OutFile tailscale-setup.exe
+        echo "Installing Tailscale..."
+        Start-Process tailscale-setup.exe -ArgumentList "/quiet", "/norestart" -Wait
+        $env:Path += ";C:\Program Files\Tailscale"
+        echo "Tailscale installation completed."
+
+    - name: Authenticate Tailscale
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" up --authkey $Env:TAILSCALE_AUTHKEY
+      env:
+        TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+    - name: Add Watermark to RDP
+      run: |
+        echo "Adding watermark to RDP..."
+        reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v LegalNoticeCaption /t REG_SZ /d "©Copyright HenCoders" /f
+        reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v LegalNoticeText /t REG_SZ /d "Welcome to HenCoders RDP. Unauthorized access is prohibited." /f
+        echo "Watermark added successfully."
+
+    - name: Optimize Internet
+      run: |
+        netsh interface tcp set global autotuninglevel=normal
+        netsh interface tcp set global chimney=enabled
+        netsh interface tcp set global congestionprovider=ctcp
+        echo "Internet optimizations applied."
+
+    - name: Optimize System Performance
+      run: |
+        powercfg -setactive SCHEME_MAX
+        reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" /v LargeSystemCache /t REG_DWORD /d 1 /f
+        reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem" /v NtfsMemoryUsage /t REG_DWORD /d 2 /f
+        echo "System performance optimized."
+
+    - name: Enable GPU Acceleration
+      run: |
+        reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d ffffffff /f
+        reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" /v GPU Priority /t REG_DWORD /d 8 /f
+        reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" /v Priority /t REG_DWORD /d 6 /f
+        echo "GPU acceleration enabled."
+
+    - name: Enabling access to RDP
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        echo "RDP access enabled."
+
+    - name: Start RDP session
+      run: cmd /c start.bat
+
+    - name: Successfully made! You can close the tab now.
+      run: cmd /c loop.bat
